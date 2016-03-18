@@ -8,6 +8,8 @@
 #define __MLPACK_METHODS_NEIGHBOR_SEARCH_LSH_SEARCH_IMPL_HPP
 
 #include <mlpack/core.hpp>
+#include "hash_function_impl.hpp"
+#include "hash_function.hpp"
 
 namespace mlpack {
 namespace neighbor {
@@ -98,6 +100,11 @@ void LSHSearch<SortPolicy>::Train(const arma::mat& referenceSet,
   Log::Info << "Hash width chosen as: " << hashWidth << std::endl;
 
   BuildHash();
+  
+  Hash_Function<> hashh;
+  hashh.BuildHash(this->referenceSet, this->numTables, 
+          this->numTables, hashWidth, this->secondHashSize, 
+  	  this->bucketSize);
 }
 
 template<typename SortPolicy>

@@ -4,6 +4,8 @@ set(SOURCES
   # LSH-search class
   lsh_search.hpp
   lsh_search_impl.hpp
+  hash_function.hpp
+  hash_function_impl.hpp
 )
 
 # Add directory name to sources.

@@ -15,6 +15,7 @@
 #include <iostream>
 
 #include "lsh_search.hpp"
+#include "hash_function.hpp"
 
 using namespace std;
 using namespace mlpack;
