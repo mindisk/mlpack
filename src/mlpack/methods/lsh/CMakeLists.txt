@@ -1,11 +1,14 @@
 # Define the files we need to compile.
 # Anything not in this list will not be compiled into mlpack.
 set(SOURCES
-  # LSH-search class
-  lsh_search.hpp
-  lsh_search_impl.hpp
-  hash_function.hpp
-  hash_function_impl.hpp
+  # hash model class
+  hash_model.hpp
+  hash_model_impl.hpp
+  #hash_model.cpp
+  # lsh model class
+  lsh_model.hpp
+  lsh_model_impl.hpp
+  #lsh_model.cpp
 )
 
 # Add directory name to sources.
@@ -20,7 +23,7 @@ set(MLPACK_SRCS ${MLPACK_SRCS} ${DIR_SRCS} PARENT_SCOPE)
 # The code to compute the approximate neighbor for the given query and reference
 # sets with p-stable LSH.
 add_executable(mlpack_lsh
-  lsh_main.cpp
+  lsh_extended_main.cpp
 )
 target_link_libraries(mlpack_lsh
   mlpack
