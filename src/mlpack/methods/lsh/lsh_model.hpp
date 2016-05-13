@@ -52,11 +52,12 @@ namespace mlpack
                      const size_t bucketSize = 500,
                     
                      const size_t numProj = 10,
-                     const size_t numTables = 10,
+                     const size_t numTables = 30,
                      const double hashWidth = 0.0,
                     
                      const size_t dimensions = 1,
-                     const size_t planes = 1);
+                     const size_t planes = 1,
+                     const size_t shears = 1);
             /**
              * Create an untrained LSH model.  Be sure to call Train() before calling
              * Search(); otherwise, an exception will be thrown when Search() is called.
@@ -78,11 +79,12 @@ namespace mlpack
                        const size_t bucketSize = 500,
             
                        const size_t numProj = 10,
-                       const size_t numTables = 10,
+                       const size_t numTables = 30,
                        const double hashWidth = 0.0,
                     
                        const size_t dimensions = 1,
-                       const size_t planes = 1);
+                       const size_t planes = 1,
+                       const size_t shears = 1);
 
             /**
              * Compute the nearest neighbors of the points in the given query set and
@@ -187,32 +189,7 @@ namespace mlpack
             size_t& DistanceEvaluations() 
             {
                 return distanceEvaluations;
-            }
-            
-
-            //! Get the number of projections.
-            size_t NumProjections() const 
-            {
-                return projections.size();
-            }
-            
-            //! Get the projection matrix of the given table.
-            const arma::mat& Projection(const size_t i) const 
-            {
-                return projections[i];
-            }
-
-            //! Get the offsets 'b' for each of the projections.  (One 'b' per column.)
-            const arma::mat& Offsets() const 
-            {
-                return offsets;
-            }
-
-            //! Get the weights of the second hash.
-            const arma::vec& SecondHashWeights() const 
-            {
-                return secondHashWeights;
-            }
+            }        
 
             //! Get the bucket size of the second hash.
             size_t BucketSize() const 
@@ -220,11 +197,6 @@ namespace mlpack
                 return bucketSize;
             }
 
-            //! Get the second hash table.
-            const arma::Mat<size_t>& SecondHashTable() const 
-            {
-                return secondHashTable;
-            }
            
         private:
             /**
@@ -303,14 +275,9 @@ namespace mlpack
             size_t numPlanes;                       //! number of planes 
             
             bool ownsSet;                           //! If true, we own the reference set.
-            size_t distanceEvaluations;             //! The number of distance evaluations.
-                        
-            std::vector<arma::mat> projections;     //! The std::vector containing the projection matrix of each table. should be [numProj x dims] x numTables           
-            arma::mat offsets;                      //! The list of the offsets 'b' for each of the projection for each table. should be numProj x numTables
-            arma::vec secondHashWeights;            //! The weights of the second hash. 
-            arma::Mat<size_t> secondHashTable;      //! The final hash table; should be (< secondHashSize) x bucketSize.           
-            arma::Col<size_t> bucketContentSize;    //! The number of elements present in each hash bucket; should be secondHashSize.           
-            arma::Col<size_t> bucketRowInHashTable; //! For a particular hash value, points to the row in secondHashTable corresponding to this value.  Should be secondHashSize.
+            size_t distanceEvaluations;             //! The number of distance evaluations.   
+            
+            size_t shears;
         }; // class lshModel
 
     } // namespace neighbor

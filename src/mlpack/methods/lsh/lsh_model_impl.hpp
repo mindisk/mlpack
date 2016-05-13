@@ -5,14 +5,14 @@
 #include <mlpack/core.hpp>
 
 #include "hash_model.hpp"
+#include "lsh_model.hpp"
 
-//#include "lsh_model.hpp"
 
 namespace mlpack
 {
     namespace neighbor
     {
-        template<typename SortPolicy>
+        template<typename SortPolicy> 
         lshModel<SortPolicy>::lshModel(const arma::mat& referenceSet,
                                         const size_t hashType,
                                         const size_t secondHashSize,
@@ -23,7 +23,8 @@ namespace mlpack
                                         const double hashWidthIn,
                                         
                                         const size_t dimensions,
-                                        const size_t planes) :
+                                        const size_t planes,
+                                        const size_t shears) :
         referenceSet(NULL), // This will be set in Train().
         hashType(hashType),
         secondHashSize(secondHashSize),
@@ -37,7 +38,8 @@ namespace mlpack
         numPlanes(planes),
         
         ownsSet(false),
-        distanceEvaluations(0)
+        distanceEvaluations(0),
+        shears(shears)
         {
             // Pass work to training function.
             Train(referenceSet, hashType, secondHashSize, bucketSize, numProj, numTables, hashWidthIn, dimensions, planes);                
@@ -58,7 +60,8 @@ namespace mlpack
         numPlanes(1),
                 
         ownsSet(true),
-        distanceEvaluations(0)
+        distanceEvaluations(0),
+        shears(1)
         {
         }
 
@@ -80,10 +83,11 @@ namespace mlpack
                 
                                          const size_t numProj,
                                          const size_t numTables,
-                                         const double hashWidthIn,
+                                         const double hashWidth,
                 
                                          const size_t dimensions,
-                                         const size_t planes) 
+                                         const size_t planes,
+                                         const size_t shears) 
         {
             // Set new reference set.
             if (this->referenceSet && ownsSet)
@@ -99,28 +103,31 @@ namespace mlpack
             // Set new parameters.
             this->numProj = numProj;
             this->numTables = numTables;
-            this->hashWidth = hashWidthIn;
+            this->hashWidth = hashWidth;
             
             this->numDimensions = dimensions;
             this->numPlanes = planes;           
             
-            hash.setParams(referenceSet, hashType, secondHashSize, bucketSize, numProj, numTables, hashWidthIn, dimensions, planes);
-//            hash(referenceSet, hashType, secondHashSize, bucketSize, numProj, numTables, hashWidthIn, dimensions, planes);
-
-            if (hashWidth == 0.0) // The user has not provided any value.
+            this->shears = shears;
+            
+            if(hashType == 1)
             {
-                // Compute a heuristic hash width from the data.
-                for (size_t i = 0; i < 25; i++) 
+                if (this->hashWidth == 0.0) // The user has not provided any value.
                 {
-                    size_t p1 = (size_t) math::RandInt(referenceSet.n_cols);
-                    size_t p2 = (size_t) math::RandInt(referenceSet.n_cols);
+                    // Compute a heuristic hash width from the data.
+                    for (size_t i = 0; i < 25; i++) 
+                    {
+                        size_t p1 = (size_t) math::RandInt(referenceSet.n_cols);
+                        size_t p2 = (size_t) math::RandInt(referenceSet.n_cols);
 
-                    hashWidth += std::sqrt(metric::EuclideanDistance::Evaluate(referenceSet.unsafe_col(p1), referenceSet.unsafe_col(p2)));
+                        this->hashWidth += std::sqrt(metric::EuclideanDistance::Evaluate(referenceSet.unsafe_col(p1), referenceSet.unsafe_col(p2)));
+                    }
+                    this->hashWidth /= 25;
                 }
-                hashWidth /= 25;
-            }
-
-            Log::Info << "Hash width chosen as: " << hashWidth << std::endl;
+                Log::Info << "Hash width chosen as: " << this->hashWidth << std::endl;
+            }          
+            
+            hash.setParams(referenceSet, hashType, secondHashSize, bucketSize, numProj, numTables, this->hashWidth, dimensions, planes, shears);
 
             hash.BuildHash();
         }
@@ -245,8 +252,21 @@ namespace mlpack
             {
                 return;
             }
-
-            const double distance = metric::EuclideanDistance::Evaluate(referenceSet->unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+            double tempDistance = 0.0;
+            switch(hashType)
+            {
+                case 1:
+                    tempDistance = metric::EuclideanDistance::Evaluate(referenceSet->unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+                    break;
+                case 2:
+                    tempDistance = hash.cosineDistance(referenceSet->unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+                    break;
+                case 3:
+                    tempDistance = hash.angularDistance(referenceSet->unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+                    break;
+            }
+            const double distance = tempDistance;
+//            const double distance = metric::EuclideanDistance::Evaluate(referenceSet->unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
 
             // If this distance is better than any of the current candidates, the
             // SortDistance() function will give us the position to insert it into.
@@ -260,15 +280,30 @@ namespace mlpack
                 InsertNeighbor(distances, neighbors, queryIndex, insertPosition, referenceIndex, distance);
             }
         }
-
+        // Called with:   BaseCase(i, (size_t) refIndices[j], querySet, resultingNeighbors, distances);
         // Base case for bichromatic search.
         template<typename SortPolicy>
         void lshModel<SortPolicy>::BaseCase(const size_t queryIndex, const size_t referenceIndex, const arma::mat& querySet, arma::Mat<size_t>& neighbors, arma::mat& distances) const 
         {
-            const double distance = metric::EuclideanDistance::Evaluate(querySet.unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+            double tempDistance = 0.0;
+            switch(hashType)
+            {
+                case 1:
+                    tempDistance = metric::EuclideanDistance::Evaluate(querySet.unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+                    break;
+                case 2:
+                    tempDistance = hash.cosineDistance(querySet.unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+                    
+                    break;
+                case 3:
+                    tempDistance = hash.angularDistance(querySet.unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
+                    break;
+            }
+            const double distance = tempDistance;
+            
+//            const double distance = metric::EuclideanDistance::Evaluate(querySet.unsafe_col(queryIndex), referenceSet->unsafe_col(referenceIndex));
 
-            // If this distance is better than any of the current candidates, the
-            // SortDistance() function will give us the position to insert it into.
+            // If this distance is better than any of the current candidates, the SortDistance() function will give us the position to insert it into.
             arma::vec queryDist = distances.unsafe_col(queryIndex);
             arma::Col<size_t> queryIndices = neighbors.unsafe_col(queryIndex);
             size_t insertPosition = SortPolicy::SortDistance(queryDist, queryIndices, distance);
@@ -296,53 +331,11 @@ namespace mlpack
             {
                 numTablesToSearch = numTables;
             }
-//            // Hash the query in each of the 'numTablesToSearch' hash tables using the
-//            // 'numProj' projections for each table. This gives us 'numTablesToSearch'
-//            // keys for the query where each key is a 'numProj' dimensional integer
-//            // vector.
-//            // Compute the projection of the query in each table.
-//            arma::mat allProjInTables(numProj, numTablesToSearch);
-//            for (size_t i = 0; i < numTablesToSearch; i++)
-//            {
-//                allProjInTables.unsafe_col(i) = projections[i].t() * queryPoint;
-//            }
-//            allProjInTables += offsets.cols(0, numTablesToSearch - 1);
-//            allProjInTables /= hashWidth;
-//
-//            // Compute the hash value of each key of the query into a bucket of the
-//            // 'secondHashTable' using the 'secondHashWeights'.
-//            arma::rowvec hashVec = secondHashWeights.t() * arma::floor(allProjInTables);
-//
-//            for (size_t i = 0; i < hashVec.n_elem; i++)
-//            {
-//                hashVec[i] = (double) ((size_t) hashVec[i] % secondHashSize);
-//            }
-//            Log::Assert(hashVec.n_elem == numTablesToSearch);
 
-            
-            arma::rowvec hashVec = hash.hashQuery(queryPoint, numTablesToSearch);
-            // For all the buckets that the query is hashed into, sequentially
-            // collect the indices in those buckets.
             arma::Col<size_t> refPointsConsidered;
             refPointsConsidered.zeros(referenceSet->n_cols);
-
-            for (size_t i = 0; i < hashVec.n_elem; i++) // For all tables.
-            {
-                size_t hashInd = (size_t) hashVec[i];
-
-                if (bucketContentSize[hashInd] > 0) 
-                {
-                    // Pick the indices in the bucket corresponding to 'hashInd'.
-                    size_t tableRow = bucketRowInHashTable[hashInd];
-                    assert(tableRow < secondHashSize);
-                    assert(tableRow < secondHashTable.n_rows);
-
-                    for (size_t j = 0; j < bucketContentSize[hashInd]; j++)
-                    {
-                        refPointsConsidered[secondHashTable(tableRow, j)]++;
-                    }
-                }
-            }
+            // hash the query
+            hash.hashQuery(queryPoint, numTablesToSearch, refPointsConsidered);
 
             referenceIndices = arma::find(refPointsConsidered > 0);
         }
@@ -363,28 +356,19 @@ namespace mlpack
                 ownsSet = true;
             }
             ar & CreateNVP(referenceSet, "referenceSet");
+            ar & CreateNVP(hash, "hash");
             ar & CreateNVP(hashType, "hashType");
+            ar & CreateNVP(secondHashSize, "secondHashSize");
+            ar & CreateNVP(bucketSize, "bucketSize");
+            
             ar & CreateNVP(numProj, "numProj");
             ar & CreateNVP(numTables, "numTables");
-
-            // Delete existing projections, if necessary.
-            if (Archive::is_loading::value)
-            {
-                projections.clear();
-            }
-            ar & CreateNVP(projections, "projections");
-            ar & CreateNVP(offsets, "offsets");
             ar & CreateNVP(hashWidth, "hashWidth");
-            ar & CreateNVP(secondHashSize, "secondHashSize");
-            ar & CreateNVP(secondHashWeights, "secondHashWeights");
-            ar & CreateNVP(bucketSize, "bucketSize");
-            ar & CreateNVP(secondHashTable, "secondHashTable");
-            ar & CreateNVP(bucketContentSize, "bucketContentSize");
-            ar & CreateNVP(bucketRowInHashTable, "bucketRowInHashTable");
-            ar & CreateNVP(distanceEvaluations, "distanceEvaluations");
-            ar & CreateNVP(numPlanes, "numPlanes");
+
             ar & CreateNVP(numDimensions, "numDimensions");
-            ar & CreateNVP(hash, "hash");
+            ar & CreateNVP(numPlanes, "numPlanes");
+            ar & CreateNVP(distanceEvaluations, "distanceEvaluations");
+            ar & CreateNVP(shears, "shears");
         }
     }
 }

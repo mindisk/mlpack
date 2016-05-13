@@ -55,8 +55,9 @@ PARAM_INT("second_hash_size", "The size of the second level hash table.", "S", 9
 PARAM_INT("bucket_size", "The size of a bucket in the second level hash.", "B", 500);
 PARAM_INT("seed", "Random seed.  If 0, 'std::time(NULL)' is used.", "s", 0);
 PARAM_INT("hash_type", "specify the type of hash that the LSH will use", "t", 1);
-PARAM_INT("dimensions", "specify the number of dimensions that the hyperplane LSH will use", "dimensions", 1);
-PARAM_INT("planes", "specify the number of planes that the hyperplane LSH will use", "planes", 1);
+PARAM_INT("dimensions", "specify the number of dimensions that the hyperplane LSH will use", "e", 1);
+PARAM_INT("planes", "specify the number of planes that the hyperplane LSH will use", "l", 1);
+PARAM_INT("shears", "specify the number of shears that the polytope LSH will use", "w", 1);
 
 int main(int argc, char *argv[]) 
 {
@@ -89,6 +90,7 @@ int main(int argc, char *argv[])
     {
         Log::Fatal << "Invalid hash type" << endl;
     }
+    
     if (CLI::HasParam("input_model_file") && CLI::HasParam("reference_file")) 
     {
         Log::Fatal << "Cannot specify both --reference_file and --input_model_file! Either create a new model with --reference_file or use an existing model with --input_model_file." << endl;
@@ -109,13 +111,21 @@ int main(int argc, char *argv[])
     {
         Log::Info << "Performing LSH-based approximate nearest neighbor search on the reference dataset in the model stored in '" << inputModelFile << "'." << endl;
     }
-    if(!CLI::HasParam("dimensions") && hashType == 2)
+    if(!CLI::HasParam("dimensions") && (hashType == 2 || hashType == 3))
     {
         Log::Fatal << "Dimensions not specified" << endl;
     }
     if(!CLI::HasParam("planes") && hashType == 2)
     {
         Log::Fatal << "Planes not specified" << endl;
+    }
+    if(!CLI::HasParam("shears") && hashType == 3)
+    {
+        Log::Fatal << "Shears not specified" << endl;
+    }
+    if(!CLI::HasParam("tables") && hashType == 3)
+    {
+        Log::Fatal << "Tables not specified" << endl;
     }
     
     // These declarations are here so that the matrices don't go out of scope.
@@ -128,18 +138,47 @@ int main(int argc, char *argv[])
     const double hashWidth = CLI::GetParam<double>("hash_width");
     const size_t dimensions = CLI::GetParam<int>("dimensions");
     const size_t planes = CLI::GetParam<int>("planes");
+    const size_t shears = CLI::GetParam<int>("shears");
     
     arma::Mat<size_t> neighbors;
     arma::mat distances;
 
-    if (hashWidth == 0.0) 
+    switch(hashType)
     {
-        Log::Info << "Using LSH with " << numProj << " projections (K) and " << numTables << " tables (L) with default hash width." << endl;
+        case 1:
+        {
+            Log::Info << "Using P-Stable distribution hash";
+            if (hashWidth == 0.0) 
+            {
+                Log::Info << " with " << numProj << " projections (K) and " << numTables << " tables (L) with default hash width." << endl;
+            }
+            else 
+            {
+                Log::Info << " with " << numProj << " projections (K) and " << numTables << " tables (L) with hash width(r): " << hashWidth << endl;
+            }
+        }
+        break;
+        case 2:
+        {
+            Log::Info << "Using hyperplane hash with " << dimensions << " dimensions (e) and " << planes << " planes (l) " << endl;           
+        }
+        break;
+        case 3:
+            Log::Info << "Using polytope hash with " << dimensions << " dimensions (e), " << numTables << " tables (l) and " << shears << " shears (w)" << endl;  
+            break;
+        default:
+            
+        break;
     }
-    else 
-    {
-        Log::Info << "Using LSH with " << numProj << " projections (K) and " << numTables << " tables (L) with hash width(r): " << hashWidth << endl;
-    }
+    
+//    if (hashWidth == 0.0) 
+//    {
+//        Log::Info << "Using LSH with " << numProj << " projections (K) and " << numTables << " tables (L) with default hash width." << endl;
+//    }
+//    else 
+//    {
+//        Log::Info << "Using LSH with " << numProj << " projections (K) and " << numTables << " tables (L) with hash width(r): " << hashWidth << endl;
+//    }
 
     lshModel<> allkann;
     if (CLI::HasParam("reference_file")) 
@@ -148,7 +187,7 @@ int main(int argc, char *argv[])
         Log::Info << "Loaded reference data from '" << referenceFile << "' (" << referenceData.n_rows << " x " << referenceData.n_cols << ")." << endl;
 
         Timer::Start("hash_building");
-        allkann.Train(referenceData, hashType, numProj, numTables, hashWidth, planes, dimensions, secondHashSize, bucketSize);
+        allkann.Train(referenceData, hashType, secondHashSize, bucketSize, numProj, numTables, hashWidth, dimensions, planes, shears);
         Timer::Stop("hash_building");
     } 
     else
@@ -167,7 +206,7 @@ int main(int argc, char *argv[])
             data::Load(queryFile, queryData, true);
             Log::Info << "Loaded query data from '" << queryFile << "' (" << queryData.n_rows << " x " << queryData.n_cols << ")." << endl;
         }
-        allkann.Search(queryData, k, neighbors, distances);
+        allkann.Search(queryData, k, neighbors, distances); 
     }
     else 
     {

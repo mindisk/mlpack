@@ -2,60 +2,19 @@
 #define __MLPACK_METHODS_NEIGHBOR_SEARCH_HASH_MODEL_IMPL_HPP
 
 #include <mlpack/core.hpp>
+#include <cmath>
+#include "hash_model.hpp"
+#include <iostream>
+using namespace std;
+
 
 namespace mlpack 
 {
     namespace neighbor 
     {
         const size_t hashModel::minHashType = 1;
-        const size_t hashModel::maxHashType = 2;
-        
-//        hashModel(const arma::mat& referenceSet,
-//                      const size_t hashType,
-//                      const size_t secondHashSize = 99901,
-//                      const size_t bucketSize = 500,  
-//                      
-//                      const size_t numProj = 10,
-//                      const size_t numTables = 10,
-//                      const double hashWidth = 0.0,
-//                                       
-//                      const size_t dimensions = 1,
-//                      const size_t planes = 1);
-        
-//        hashModel::hashModel(const arma::mat& referenceSet,
-//                            const size_t hashType,
-//                            const size_t secondHashSize,
-//                            const size_t bucketSize,
-//                
-//                            const size_t numProj,
-//                            const size_t numTables,
-//                            const double hashWidthIn,
-//
-//                            const size_t dimensions,
-//                            const size_t planes) //:
-//            referenceSet(&referenceSet), // This will be set in Train().
-//            hashType(hashType),
-//            numProj(numProj),
-//            numTables(numTables),
-//            hashWidth(hashWidthIn),
-//            secondHashSize(secondHashSize),
-//            bucketSize(bucketSize),
-//            numDimensions(dimensions),
-//            numPlanes(planes)
-//        {           
-//            this->referenceSet = &referenceSet;
-//            this->hashType = hashType;
-//            this->secondHashSize = secondHashSize;
-//            this->bucketSize = bucketSize;
-//            
-//            this->numProj = numProj;
-//            this->numTables = numTables;
-//            this->hashWidth = hashWidthIn;
-//            
-//            this->numDimensions = dimensions;
-//            this->numPlanes = planes;
-//        }
-            
+        const size_t hashModel::maxHashType = 3;
+                  
         hashModel::hashModel() 
         {
         }
@@ -73,7 +32,8 @@ namespace mlpack
                             const double hashWidthIn,
 
                             const size_t dimensions,
-                            const size_t planes)
+                            const size_t planes,
+                            const size_t shears)
         {
             this->referenceSet = &referenceSet;
             this->hashType = hashType;
@@ -86,6 +46,8 @@ namespace mlpack
             
             this->numDimensions = dimensions;
             this->numPlanes = planes;
+            
+            this->numShears = shears;
         }
             // Build hash method: create the first level hash and the second level hash
 
@@ -135,7 +97,7 @@ namespace mlpack
                     offsets *= hashWidth;
                     // Step III: Create each hash table in the first level hash one by one and putting them directly into the 'secondHashTable' for memory efficiency.
                     projections.clear(); // Reset projections vector.
-                    hashType2StableDistribution(numRowsInTable);
+                    hashType2StableDistribution(&numRowsInTable);
                     break;
                 case 2:
                     // Obtain the weights for the second hash.
@@ -148,11 +110,13 @@ namespace mlpack
 
                       this->planes.push_back(planeMat);
                     }
-                    for(size_t i = 0; i < referenceSet->n_rows; i++)
+                    for(size_t i = 0; i < referenceSet->n_cols; i++)
                     {
-                        arma::rowvec query = referenceSet->col(i);
+                        arma::vec query = referenceSet->col(i);
                         arma::mat hyperplaneMat = hashTypeHyperplaneOnePoint(query, numTables);
                         
+                        // Step VI: Putting the points in the 'secondHashTable' by hashing the key.
+                        // Now we hash every key, point ID to its corresponding bucket.
                         arma::rowvec secondHashVec = secondHashWeights.t() * arma::floor(hyperplaneMat);
 
                         // This gives us the bucket for the corresponding point ID.
@@ -160,7 +124,7 @@ namespace mlpack
                         {
                             secondHashVec[j] = (double) ((size_t) secondHashVec[j] % secondHashSize);
                         }
-                        Log::Assert(secondHashVec.n_elem == referenceSet->n_cols);
+                        //Log::Assert(secondHashVec.n_elem == referenceSet->n_cols);
 
                         // Insert the point in the corresponding row to its bucket in the 'secondHashTable'.
                         for (size_t j = 0; j < secondHashVec.n_elem; j++) 
@@ -174,7 +138,7 @@ namespace mlpack
                             {
                                 // Start a new row for hash.
                                 bucketRowInHashTable[hashInd] = numRowsInTable;
-                                secondHashTable(numRowsInTable, 0) = j;
+                                secondHashTable(numRowsInTable, 0) = i;
                                 numRowsInTable++;
                             }
                             else 
@@ -182,7 +146,7 @@ namespace mlpack
                                 // If bucket is already present in the 'secondHashTable', find the corresponding row and insert the point ID in this row unless the bucket is full, in which case, do nothing.
                                 if (bucketContentSize[hashInd] < bucketSize)
                                 {
-                                    secondHashTable(bucketRowInHashTable[hashInd], bucketContentSize[hashInd]) = j;
+                                    secondHashTable(bucketRowInHashTable[hashInd], bucketContentSize[hashInd]) = i;
                                 }
                             }
 
@@ -195,7 +159,65 @@ namespace mlpack
                     }
                     break;
                 case 3:
+                    // Obtain the weights for the second hash.
+                    secondHashWeights = arma::floor(arma::randu(numShears) * (double) secondHashSize);
+                    
+                    shearsTable.clear();
+                    for (size_t i = 0; i < numTables; i++)
+                    {
+                      arma::imat shearMat;
+                      shearMat = arma::randi(numDimensions * 3, numShears, arma::distr_param(-1, +1));
 
+                      shearsTable.push_back(shearMat);
+                    }
+                    
+                    for(size_t i = 0; i < referenceSet->n_cols; i++)
+                    {
+                        arma::rowvec query = referenceSet->col(i);
+                        arma::mat polytopeMat = hashTypeCrossPolytopeOnePoint(query, numTables);
+                        
+                        // Step VI: Putting the points in the 'secondHashTable' by hashing the key.
+                        // Now we hash every key, point ID to its corresponding bucket.
+                        arma::rowvec secondHashVec = secondHashWeights.t() * arma::floor(polytopeMat);
+
+                        // This gives us the bucket for the corresponding point ID.
+                        for (size_t j = 0; j < secondHashVec.n_elem; j++)
+                        {
+                            secondHashVec[j] = (double) ((size_t) secondHashVec[j] % secondHashSize);
+                        }
+                        //Log::Assert(secondHashVec.n_elem == referenceSet->n_cols);
+
+                        // Insert the point in the corresponding row to its bucket in the 'secondHashTable'.
+                        for (size_t j = 0; j < secondHashVec.n_elem; j++) 
+                        {
+                            // This is the bucket number.
+                            size_t hashInd = (size_t) secondHashVec[j];
+                            // The point ID is 'j'.
+
+                            // If this is currently an empty bucket, start a new row keep track of which row corresponds to the bucket.
+                            if (bucketContentSize[hashInd] == 0) 
+                            {
+                                // Start a new row for hash.
+                                bucketRowInHashTable[hashInd] = numRowsInTable;
+                                secondHashTable(numRowsInTable, 0) = i;
+                                numRowsInTable++;
+                            }
+                            else 
+                            {
+                                // If bucket is already present in the 'secondHashTable', find the corresponding row and insert the point ID in this row unless the bucket is full, in which case, do nothing.
+                                if (bucketContentSize[hashInd] < bucketSize)
+                                {
+                                    secondHashTable(bucketRowInHashTable[hashInd], bucketContentSize[hashInd]) = i;
+                                }
+                            }
+
+                            // Increment the count of the points in this bucket.
+                            if (bucketContentSize[hashInd] < bucketSize)
+                            {
+                                bucketContentSize[hashInd]++;
+                            }
+                        } // Loop over all points in the reference set.
+                    }
                     break;
             }
             // Step VII: Condensing the 'secondHashTable'.
@@ -211,7 +233,7 @@ namespace mlpack
             secondHashTable.resize(numRowsInTable, maxBucketSize);
         }       
         
-        void hashModel::hashType2StableDistribution(size_t numRowsInTable) 
+        void hashModel::hashType2StableDistribution(size_t* numRowsInTable) 
         {            
             for (size_t i = 0; i < numTables; i++) 
             {
@@ -241,7 +263,7 @@ namespace mlpack
                 {
                     secondHashVec[j] = (double) ((size_t) secondHashVec[j] % secondHashSize);
                 }
-                Log::Assert(secondHashVec.n_elem == referenceSet->n_cols);
+                //Log::Assert(secondHashVec.n_elem == referenceSet->n_cols);
 
                 // Insert the point in the corresponding row to its bucket in the 'secondHashTable'.
                 for (size_t j = 0; j < secondHashVec.n_elem; j++) 
@@ -254,9 +276,9 @@ namespace mlpack
                     if (bucketContentSize[hashInd] == 0) 
                     {
                         // Start a new row for hash.
-                        bucketRowInHashTable[hashInd] = numRowsInTable;
-                        secondHashTable(numRowsInTable, 0) = j;
-                        numRowsInTable++;
+                        bucketRowInHashTable[hashInd] = *numRowsInTable;
+                        secondHashTable(*numRowsInTable, 0) = j;
+                        (*numRowsInTable)++;
                     }
                     else 
                     {
@@ -295,7 +317,7 @@ namespace mlpack
         }
         
         template<typename VecType>
-        arma::rowvec hashModel::hashQuery(const VecType& queryPoint, size_t numTablesToSearch) const
+        void hashModel::hashQuery(const VecType& queryPoint, size_t numTablesToSearch, arma::Col<size_t>& refPointsConsidered) const
         {
             arma::rowvec hashVec;
             
@@ -310,9 +332,7 @@ namespace mlpack
                     }
                     allProjInTables += offsets.cols(0, numTablesToSearch - 1);
                     allProjInTables /= hashWidth;
-
-                    // Compute the hash value of each key of the query into a bucket of the
-                    // 'secondHashTable' using the 'secondHashWeights'.
+                    // Compute the hash value of each key of the query into a bucket of the 'secondHashTable' using the 'secondHashWeights'.
                     hashVec = secondHashWeights.t() * arma::floor(allProjInTables);
                 }
                     break;
@@ -322,6 +342,10 @@ namespace mlpack
                     hashVec = secondHashWeights.t() * arma::floor(allCutsInTables);
                 }
                     break;
+                case 3:
+                    arma::mat polytopeMat = hashTypeCrossPolytopeOnePoint(queryPoint, numTablesToSearch);
+                    hashVec = secondHashWeights.t() * arma::floor(polytopeMat);
+                    break;
             }
             
             for (size_t i = 0; i < hashVec.n_elem; i++)
@@ -330,8 +354,174 @@ namespace mlpack
             }
             Log::Assert(hashVec.n_elem == numTablesToSearch);
             
-            return hashVec;
+            for (size_t i = 0; i < hashVec.n_elem; i++) // For all tables.
+            {
+                size_t hashInd = (size_t) hashVec[i];
+
+                if (bucketContentSize[hashInd] > 0) 
+                {
+                    // Pick the indices in the bucket corresponding to 'hashInd'.
+                    size_t tableRow = bucketRowInHashTable[hashInd];
+                    assert(tableRow < secondHashSize);
+                    assert(tableRow < secondHashTable.n_rows);
+
+                    for (size_t j = 0; j < bucketContentSize[hashInd]; j++)
+                    {
+                        refPointsConsidered[secondHashTable(tableRow, j)]++;
+                    }
+                }
+            }
         }
+        
+        template<typename VecType> 
+        arma::mat hashModel::hashTypeCrossPolytopeOnePoint(const VecType& queryPoint, size_t numTablesToSearch) const
+        {
+            arma::mat allRotationsInTables(numShears, numTablesToSearch);
+
+            //the smallest power of two greater than or equal to numDim
+            size_t powerSize = pow(2, ceil(log2(numDimensions)));
+
+            for (size_t i = 0; i < numTablesToSearch; i++)
+            {
+                arma::vec rotation;
+                rotation.clear();
+
+                for (size_t k = 0; k < numShears; k++)
+                {
+                    arma::vec aux;
+
+                    aux.set_size(powerSize);
+
+                    //loading in the query point
+                    for (size_t j = 0; j < numDimensions; j++)
+                    {
+                        aux[j] = queryPoint[j];
+                    }
+                    //padding to make the vector size a power of 2
+                    for (size_t j = 0; j < powerSize - numDimensions; j++)
+                    {
+                        aux[j] = 0;
+                    }
+                    //performing pseudo-random rotation of the point.
+                    for (size_t d = 0; d < 3; d++)
+                    {
+                        for (size_t j = 0; j < numDimensions; j++)
+                        {
+                            aux[j] = aux[j] * shearsTable[i](k, d * numDimensions + j);
+                        }
+                        HadamardTransform(aux);
+                    }
+
+                    //finding index of closest point on the cross-polytope
+                    size_t maxIndex = 0;
+                    size_t maxMagnitude = 0;
+                    for (size_t j = 0; j < powerSize; j++)
+                    {
+                        if(maxMagnitude < abs(aux[j]))
+                        {
+                            maxIndex = j;
+                            maxMagnitude = abs(aux[j]);
+                        }
+                    }
+                    if(aux[maxIndex] < 0) // k ?
+                    {
+                        maxIndex += powerSize;
+                    }
+                    rotation[k] = maxIndex;
+                }
+                allRotationsInTables.unsafe_col(i) = rotation;
+            }
+            return allRotationsInTables;
+        }
+        
+        template<typename VecType> 
+        void hashModel::HadamardTransform(VecType& query) const
+        {
+            VecType aux;
+            VecType res;
+
+            aux.clear();
+
+            //loading in the query point
+            for(size_t i = 0; i < query.size(); i++)
+            {
+                aux[i] = query[i];
+            }
+            //iterating over every size of division
+            for(size_t d = query.size(); d >= 1; d/=2)
+            {
+                res.clear();
+
+                //going through each subdivision
+                for(size_t r = 0; r < query.size(); r += d)
+                {
+                    for(size_t i = 0; i < d/2; i++)
+                    {
+                        res[r + i]       += aux[r + i];
+                        res[r + i]       += aux[r + d/2 + i];
+                        res[r + d/2 + i] += aux[r + i];
+                        res[r + d/2 + i] -= aux[r + d/2 + i];
+                    }
+                }
+                //swapping to prepare the next auxiliary
+                VecType temp = res;
+                res = aux;
+                aux = temp;
+            }
+            query = res;
+//            return res;
+        }
+        
+        template<typename VecType> 
+        double hashModel::cosineDistance(const VecType& A, const VecType& B) const
+        {
+//            double dot = 0.0, denom_a = 0.0, denom_b = 0.0 ;
+//            
+//            Log::Assert(A.size() == B.size());
+//            
+//             for(size_t i = 0u; i < A.size(); ++i) 
+//             {
+//                dot += A[i] * B[i] ;
+//                denom_a += A[i] * A[i] ;
+//                denom_b += B[i] * B[i] ;
+//            }
+//            // either above or below variant
+//            dot = arma::accu(A * B);
+//            denom_a = arma::accu(arma::square(A));
+//            denom_b = arma::accu(arma::square(B));
+//            
+//            return dot / (sqrt(denom_a) * sqrt(denom_b)) ;
+            
+            //return (arma::accu(A * B)) / (sqrt(arma::accu(arma::square(A))) * sqrt(arma::accu(arma::square(B))));
+            
+            //cout << "\n";
+            //cout << arma::norm_dot(A,B);
+            //cout << "\n";
+            return  arma::norm_dot(A,B);
+        }
+        template<typename VecType> 
+        double hashModel::angularDistance(const VecType& A, const VecType& B) const
+        {
+//            double dot = 0.0, denom_a = 0.0, denom_b = 0.0 ;
+//            
+//            Log::Assert(A.size() == B.size());
+//            
+//             for(size_t i = 0u; i < A.size(); ++i) 
+//             {
+//                dot += A[i] * B[i] ;
+//                denom_a += A[i] * A[i] ;
+//                denom_b += B[i] * B[i] ;
+//            }
+//            // either above or below variant
+//            dot = arma::accu(A * B);
+//            denom_a = arma::accu(arma::square(A));
+//            denom_b = arma::accu(arma::square(B));
+//            
+//            return acos(dot / (sqrt(denom_a) * sqrt(denom_b)));
+            
+            return acos(arma::accu(A * B)) / (sqrt(arma::accu(arma::square(A))) * sqrt(arma::accu(arma::square(B))));
+        }
+        
         
         template<typename Archive>       
         void hashModel::Serialize(Archive& ar, const unsigned int /* version */) 
@@ -360,6 +550,9 @@ namespace mlpack
             ar & CreateNVP(numDimensions, "numDimensions");
             ar & CreateNVP(numPlanes, "numPlanes");
             ar & CreateNVP(planes, "planes");
+            
+            ar & CreateNVP(numShears, "numShears");
+            ar & CreateNVP(shearsTable, "shearsTable");
         }
     }
 }
