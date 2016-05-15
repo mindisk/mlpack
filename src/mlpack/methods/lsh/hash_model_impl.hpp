@@ -161,19 +161,19 @@ namespace mlpack
                 case 3:
                     // Obtain the weights for the second hash.
                     secondHashWeights = arma::floor(arma::randu(numShears) * (double) secondHashSize);
-                    
+                    powerSize = pow(2, ceil(log2(numDimensions)));
                     shearsTable.clear();
                     for (size_t i = 0; i < numTables; i++)
                     {
                       arma::imat shearMat;
-                      shearMat = arma::randi(numDimensions * 3, numShears, arma::distr_param(-1, +1));
+                      shearMat = arma::randi(powerSize * 3, numShears, arma::distr_param(-1, +1));
 
                       shearsTable.push_back(shearMat);
                     }
                     
                     for(size_t i = 0; i < referenceSet->n_cols; i++)
                     {
-                        arma::rowvec query = referenceSet->col(i);
+                        arma::vec query = referenceSet->col(i);
                         arma::mat polytopeMat = hashTypeCrossPolytopeOnePoint(query, numTables);
                         
                         // Step VI: Putting the points in the 'secondHashTable' by hashing the key.
@@ -309,7 +309,7 @@ namespace mlpack
 
                 for (size_t j = 0; j < numPlanes; j++)
                 {
-                    cut[i] = cut[i] > 0 ? 0 : 1;
+                    cut[j] = cut[j] > 0 ? 0 : 1;
                 }
                 allCutsInTables.unsafe_col(i) = cut;
             }
@@ -379,18 +379,19 @@ namespace mlpack
             arma::mat allRotationsInTables(numShears, numTablesToSearch);
 
             //the smallest power of two greater than or equal to numDim
-            size_t powerSize = pow(2, ceil(log2(numDimensions)));
+            
 
             for (size_t i = 0; i < numTablesToSearch; i++)
             {
-                arma::vec rotation;
-                rotation.clear();
+                arma::vec rotation(numShears);
+                rotation.zeros();
+//                rotation.clear();
 
                 for (size_t k = 0; k < numShears; k++)
                 {
                     arma::vec aux;
-
                     aux.set_size(powerSize);
+                    aux.zeros();
 
                     //loading in the query point
                     for (size_t j = 0; j < numDimensions; j++)
@@ -398,7 +399,7 @@ namespace mlpack
                         aux[j] = queryPoint[j];
                     }
                     //padding to make the vector size a power of 2
-                    for (size_t j = 0; j < powerSize - numDimensions; j++)
+                    for (size_t j = numDimensions; j < powerSize; j++)
                     {
                         aux[j] = 0;
                     }
@@ -407,11 +408,17 @@ namespace mlpack
                     {
                         for (size_t j = 0; j < numDimensions; j++)
                         {
-                            aux[j] = aux[j] * shearsTable[i](k, d * numDimensions + j);
+                            aux[j] = aux[j] * shearsTable[i](d * numDimensions + j, k);
+                            //std::cout << aux[j];
                         }
                         HadamardTransform(aux);
                     }
-
+                    
+//                    std::stringstream sstm;
+//                    for(size_t m = 0; m < aux.size();m++){
+//                        sstm << aux[m]<< " ";
+//                        cout <<  sstm.str();
+//                    }
                     //finding index of closest point on the cross-polytope
                     size_t maxIndex = 0;
                     size_t maxMagnitude = 0;
@@ -437,10 +444,12 @@ namespace mlpack
         template<typename VecType> 
         void hashModel::HadamardTransform(VecType& query) const
         {
-            VecType aux;
-            VecType res;
-
-            aux.clear();
+            VecType aux(query.size());
+            aux.zeros();
+            VecType res(query.size());
+            res.zeros();
+           
+           //  aux.clear();
 
             //loading in the query point
             for(size_t i = 0; i < query.size(); i++)
@@ -448,10 +457,9 @@ namespace mlpack
                 aux[i] = query[i];
             }
             //iterating over every size of division
-            for(size_t d = query.size(); d >= 1; d/=2)
+            for(size_t d = query.size(); d >= 2; d/=2)
             {
-                res.clear();
-
+                res.zeros();
                 //going through each subdivision
                 for(size_t r = 0; r < query.size(); r += d)
                 {
@@ -468,7 +476,13 @@ namespace mlpack
                 res = aux;
                 aux = temp;
             }
-            query = res;
+            
+            query = aux;
+//            std::stringstream sstm;
+//            for(size_t m = 0; m < aux.size();m++){
+//                sstm << aux[m]<< " ";
+//                cout <<  sstm.str();
+//            }
 //            return res;
         }
         
@@ -519,7 +533,9 @@ namespace mlpack
 //            
 //            return acos(dot / (sqrt(denom_a) * sqrt(denom_b)));
             
-            return acos(arma::accu(A * B)) / (sqrt(arma::accu(arma::square(A))) * sqrt(arma::accu(arma::square(B))));
+            //return acos(arma::accu(A * B)) / (sqrt(arma::accu(arma::square(A))) * sqrt(arma::accu(arma::square(B))));
+            double dist = acos(arma::norm_dot(A,B));
+            return dist;
         }
         
         

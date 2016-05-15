@@ -87,6 +87,7 @@ namespace mlpack
             
             size_t numShears;
             std::vector<arma::imat> shearsTable;
+            size_t powerSize;
         }; // class hashModel
 
     } // namespace neighbor
