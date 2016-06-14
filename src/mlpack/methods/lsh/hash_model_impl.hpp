@@ -114,7 +114,7 @@ namespace mlpack
                     {
                         arma::vec query = referenceSet->col(i);
                         arma::mat hyperplaneMat = hashTypeHyperplaneOnePoint(query, numTables);
-                        
+                        //hyperplaneMat.raw_print(std::cout, "H =");
                         // Step VI: Putting the points in the 'secondHashTable' by hashing the key.
                         // Now we hash every key, point ID to its corresponding bucket.
                         arma::rowvec secondHashVec = secondHashWeights.t() * arma::floor(hyperplaneMat);
@@ -166,7 +166,7 @@ namespace mlpack
                     for (size_t i = 0; i < numTables; i++)
                     {
                       arma::imat shearMat;
-                      shearMat = arma::randi(powerSize * 3, numShears, arma::distr_param(-1, +1));
+                      shearMat = arma::randi<arma::imat>(powerSize * 3, numShears, arma::distr_param(-1, +1));
 
                       shearsTable.push_back(shearMat);
                     }
@@ -175,11 +175,11 @@ namespace mlpack
                     {
                         arma::vec query = referenceSet->col(i);
                         arma::mat polytopeMat = hashTypeCrossPolytopeOnePoint(query, numTables);
-                        
+                        //polytopeMat.raw_print(std::cout, "P =");
                         // Step VI: Putting the points in the 'secondHashTable' by hashing the key.
                         // Now we hash every key, point ID to its corresponding bucket.
                         arma::rowvec secondHashVec = secondHashWeights.t() * arma::floor(polytopeMat);
-
+                        
                         // This gives us the bucket for the corresponding point ID.
                         for (size_t j = 0; j < secondHashVec.n_elem; j++)
                         {
@@ -309,7 +309,7 @@ namespace mlpack
 
                 for (size_t j = 0; j < numPlanes; j++)
                 {
-                    cut[j] = cut[j] > 0 ? 0 : 1;
+                    cut[j] = cut[j] >= 0 ? 1 : 0;
                 }
                 allCutsInTables.unsafe_col(i) = cut;
             }
@@ -377,15 +377,10 @@ namespace mlpack
         arma::mat hashModel::hashTypeCrossPolytopeOnePoint(const VecType& queryPoint, size_t numTablesToSearch) const
         {
             arma::mat allRotationsInTables(numShears, numTablesToSearch);
-
-            //the smallest power of two greater than or equal to numDim
-            
-
             for (size_t i = 0; i < numTablesToSearch; i++)
             {
                 arma::vec rotation(numShears);
                 rotation.zeros();
-//                rotation.clear();
 
                 for (size_t k = 0; k < numShears; k++)
                 {
@@ -409,16 +404,10 @@ namespace mlpack
                         for (size_t j = 0; j < numDimensions; j++)
                         {
                             aux[j] = aux[j] * shearsTable[i](d * numDimensions + j, k);
-                            //std::cout << aux[j];
                         }
                         HadamardTransform(aux);
                     }
-                    
-//                    std::stringstream sstm;
-//                    for(size_t m = 0; m < aux.size();m++){
-//                        sstm << aux[m]<< " ";
-//                        cout <<  sstm.str();
-//                    }
+                   
                     //finding index of closest point on the cross-polytope
                     size_t maxIndex = 0;
                     size_t maxMagnitude = 0;
@@ -449,8 +438,6 @@ namespace mlpack
             VecType res(query.size());
             res.zeros();
            
-           //  aux.clear();
-
             //loading in the query point
             for(size_t i = 0; i < query.size(); i++)
             {
@@ -476,69 +463,21 @@ namespace mlpack
                 res = aux;
                 aux = temp;
             }
-            
             query = aux;
-//            std::stringstream sstm;
-//            for(size_t m = 0; m < aux.size();m++){
-//                sstm << aux[m]<< " ";
-//                cout <<  sstm.str();
-//            }
-//            return res;
         }
         
         template<typename VecType> 
         double hashModel::cosineDistance(const VecType& A, const VecType& B) const
         {
-//            double dot = 0.0, denom_a = 0.0, denom_b = 0.0 ;
-//            
-//            Log::Assert(A.size() == B.size());
-//            
-//             for(size_t i = 0u; i < A.size(); ++i) 
-//             {
-//                dot += A[i] * B[i] ;
-//                denom_a += A[i] * A[i] ;
-//                denom_b += B[i] * B[i] ;
-//            }
-//            // either above or below variant
-//            dot = arma::accu(A * B);
-//            denom_a = arma::accu(arma::square(A));
-//            denom_b = arma::accu(arma::square(B));
-//            
-//            return dot / (sqrt(denom_a) * sqrt(denom_b)) ;
-            
-            //return (arma::accu(A * B)) / (sqrt(arma::accu(arma::square(A))) * sqrt(arma::accu(arma::square(B))));
-            
-            //cout << "\n";
-            //cout << arma::norm_dot(A,B);
-            //cout << "\n";
-            return  arma::norm_dot(A,B);
-        }
+            return acos(arma::norm_dot(A,B));
+        } 
+        
         template<typename VecType> 
         double hashModel::angularDistance(const VecType& A, const VecType& B) const
         {
-//            double dot = 0.0, denom_a = 0.0, denom_b = 0.0 ;
-//            
-//            Log::Assert(A.size() == B.size());
-//            
-//             for(size_t i = 0u; i < A.size(); ++i) 
-//             {
-//                dot += A[i] * B[i] ;
-//                denom_a += A[i] * A[i] ;
-//                denom_b += B[i] * B[i] ;
-//            }
-//            // either above or below variant
-//            dot = arma::accu(A * B);
-//            denom_a = arma::accu(arma::square(A));
-//            denom_b = arma::accu(arma::square(B));
-//            
-//            return acos(dot / (sqrt(denom_a) * sqrt(denom_b)));
-            
-            //return acos(arma::accu(A * B)) / (sqrt(arma::accu(arma::square(A))) * sqrt(arma::accu(arma::square(B))));
-            double dist = acos(arma::norm_dot(A,B));
-            return dist;
+            return arma::norm_dot(A,B);
         }
-        
-        
+                
         template<typename Archive>       
         void hashModel::Serialize(Archive& ar, const unsigned int /* version */) 
         {
@@ -572,6 +511,4 @@ namespace mlpack
         }
     }
 }
-
 #endif /* HASH_MODEL_IMPL_HPP */
-
